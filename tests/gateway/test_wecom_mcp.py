@@ -62,6 +62,8 @@ async def test_stdio_facade_preserves_remote_error_and_schema(tmp_path, monkeypa
     bridge = WeComMCPBridge(SimpleNamespace())
     bridge.query = AsyncMock(side_effect=lambda userid, data: (
         {"userid": userid} if data["action"] == "user" else
+        ({"errcode": 846610, "error": "WeCom MCP configuration request failed"}
+         if data["category"] == "msg" else {"tools": []}) if data["action"] == "list" else
         {"content": [{"type": "text", "text": '{"errcode":403}'}], "isError": True}
     ))
     await bridge.start()
@@ -81,6 +83,11 @@ async def test_stdio_facade_preserves_remote_error_and_schema(tmp_path, monkeypa
                 assert "userid" not in names["wecom_query"].inputSchema["properties"]
                 result = await session.call_tool("wecom_user_info", {})
                 assert "alice" in result.content[0].text
+                result = await session.call_tool("wecom_list_tools", {"category": "msg"})
+                assert result.isError is True
+                assert "846610" in result.content[0].text
+                result = await session.call_tool("wecom_list_tools", {"category": "todo"})
+                assert result.isError is False
                 result = await session.call_tool("wecom_query", {"category": "todo", "method": "get_todo_list", "arguments": {}})
                 assert result.isError is True
                 assert "403" in result.content[0].text

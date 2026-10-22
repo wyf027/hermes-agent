@@ -32,6 +32,22 @@ provided by this opt-in bridge.
 Writes are intentionally unavailable. A query being listed does not imply its
 business permission was granted: check `isError` and the remote `errcode`.
 `wecom_user_info` reports message context, not a directory API lookup.
+Configuration failures carry `isError=true` and the original `errcode`; they
+must not be interpreted as a successful empty query or automatically described
+as missing authorization.
+
+Live acceptance on 2026-10-22: authenticated sender identity succeeded;
+`get_todo_list(limit=5)` returned `errcode=0` and an empty first page. The server
+describes this todo API as limited to records created by this bot. Configuration
+requests for `msg`, `schedule`, and `contact` returned `846610`. Those remote
+queries are not verified working, even when the app's authorization page shows
+the corresponding category as authorized. Do not substitute another data source.
+
+A prompt supported by that live result:
+
+> 使用 wecom_user_info 返回我的 userid，并注明来自已认证消息上下文。
+> 然后用 wecom_list_tools(todo) 获取参数，调用 get_todo_list 查询最多 5 条
+> 本机器人创建的待办。非空则取详情；说明错误码、分页状态和查询范围。
 
 Example acceptance prompt (replace the dates):
 

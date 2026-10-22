@@ -106,7 +106,8 @@ class WeComMCPBridge:
             "aibot_get_mcp_config", {"biz_type": category, "plugin_version": "2026.7.2"}
         )
         if response.get("errcode", 0) not in (0, None):
-            return {"errcode": response["errcode"], "error": "WeCom MCP configuration denied"}
+            return {"errcode": response["errcode"], "category": category,
+                    "error": "WeCom MCP configuration request failed"}
         url = (response.get("body") or {}).get("url", "")
         parsed = urlparse(url)
         # Only official, authenticated MCP endpoints may receive this identity.

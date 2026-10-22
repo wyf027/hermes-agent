@@ -1,12 +1,13 @@
 """Stdio MCP facade for the gateway's sender-bound, read-only WeCom bridge."""
 from __future__ import annotations
 
+import json
 import os
 from typing import Literal
 
 import httpx
 from mcp.server.fastmcp import FastMCP
-from mcp.types import CallToolResult, ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 mcp = FastMCP("wecom", instructions=(
     "Use these tools for 企业微信 queries. First discover the category's schemas, "
@@ -35,9 +36,14 @@ async def wecom_user_info() -> dict:
 
 
 @mcp.tool(annotations=READ)
-async def wecom_list_tools(category: Category) -> dict:
+async def wecom_list_tools(category: Category) -> CallToolResult:
     """查看企业微信查询接口及参数。msg=消息会话，todo=待办，contact=用户，schedule=日程。"""
-    return await query({"action": "list", "category": category})
+    result = await query({"action": "list", "category": category})
+    failed = bool(result.get("error")) or result.get("errcode", 0) not in (0, None)
+    return CallToolResult(
+        content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],
+        isError=failed,
+    )
 
 
 @mcp.tool(annotations=READ)
@@ -46,8 +52,6 @@ async def wecom_query(category: Category, method: str, arguments: dict) -> CallT
     result = await query({"action": "call", "category": category, "method": method, "arguments": arguments})
     if "content" in result:
         return CallToolResult.model_validate(result)
-    import json
-    from mcp.types import TextContent
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))], isError=True)
 
 
