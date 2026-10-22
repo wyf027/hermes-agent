@@ -217,6 +217,8 @@ class WeComAdapter(BasePlatformAdapter):
         self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
         self._device_id = uuid.uuid4().hex
         self._last_chat_req_ids: Dict[str, str] = {}
+        self._mcp_bridge = None
+        self._mcp_queries_enabled = bool(extra.get("mcp_queries", False))
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -256,12 +258,19 @@ class WeComAdapter(BasePlatformAdapter):
             self._mark_connected()
             self._listen_task = asyncio.create_task(self._listen_loop())
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            if self._mcp_queries_enabled:
+                from plugins.platforms.wecom.mcp_bridge import WeComMCPBridge
+                self._mcp_bridge = WeComMCPBridge(self)
+                await self._mcp_bridge.start()
             logger.info("[%s] Connected to %s", self.name, self._ws_url)
             return True
         except Exception as exc:
             message = f"WeCom startup failed: {exc}"
             self._set_fatal_error("wecom_connect_error", message, retryable=True)
             logger.error("[%s] Failed to connect: %s", self.name, exc, exc_info=True)
+            if self._mcp_bridge:
+                await self._mcp_bridge.close()
+                self._mcp_bridge = None
             await self._cleanup_ws()
             if self._http_client:
                 await self._http_client.aclose()
@@ -288,6 +297,10 @@ class WeComAdapter(BasePlatformAdapter):
             except asyncio.CancelledError:
                 pass
             self._heartbeat_task = None
+
+        if self._mcp_bridge:
+            await self._mcp_bridge.close()
+            self._mcp_bridge = None
 
         self._fail_pending_responses(RuntimeError("WeCom adapter disconnected"))
         await self._cleanup_ws()
@@ -552,6 +565,8 @@ class WeComAdapter(BasePlatformAdapter):
         # this chat can fall back to APP_CMD_RESPONSE (required for groups —
         # WeCom AI Bots cannot initiate APP_CMD_SEND in group chats).
         self._remember_chat_req_id(chat_id, self._payload_req_id(payload))
+        if self._mcp_bridge:
+            self._mcp_bridge.observe_sender(sender_id)
 
         text, reply_text = self._extract_text(body)
         # Strip leading @mention in group chats so slash commands like

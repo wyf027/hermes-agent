@@ -636,6 +636,21 @@ def run_codex_app_server_turn(
         _ServerRequestRouting,
     )
 
+    # A group may reuse an agent for different speakers. A Codex MCP child is
+    # bound to one verified WeCom sender; never reuse it for another sender.
+    from gateway.session_context import get_session_env
+    identity = (
+        get_session_env("HERMES_SESSION_PLATFORM"),
+        get_session_env("HERMES_SESSION_USER_ID"),
+    )
+    previous = getattr(agent, "_codex_wecom_identity", None)
+    if previous != identity and (identity[0] == "wecom" or (previous and previous[0] == "wecom")):
+        old_session = getattr(agent, "_codex_session", None)
+        if old_session is not None:
+            old_session.close()
+            agent._codex_session = None
+    agent._codex_wecom_identity = identity
+
     # Lazy session: one CodexAppServerSession per AIAgent instance.
     # Spawned on first turn, reused across turns, closed at AIAgent
     # shutdown (see _cleanup hook).

@@ -94,6 +94,9 @@ class CodexAppServerClient:
             spawn_env["CODEX_HOME"] = codex_home
 
         app_server_args = list(extra_args or [])
+        if spawn_env.get("HERMES_SESSION_PLATFORM") == "wecom":
+            from plugins.platforms.wecom.mcp_bridge import codex_mcp_settings
+            app_server_args.extend(codex_mcp_settings(spawn_env))
         # Kanban workers must be able to write their handoff/status back to
         # the board DB, which lives outside the per-task workspace. Keep the
         # Codex sandbox on, but add the Kanban root as the only extra writable
