@@ -11,10 +11,12 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 mcp = FastMCP("wecom", instructions=(
     "Use these tools for 企业微信 queries. First discover the category's schemas, "
-    "then query the official WeCom MCP service. User identity is supplied by the "
+    "then query the official WeCom MCP service or configured official CLI. User identity is supplied by the "
     "gateway. Never substitute Google Calendar or local agent todos for WeCom data. "
     "Check errcode and isError; an empty successful list is different from a failure. "
-    "Fetch details for nonempty todo or schedule ID lists. Use Asia/Shanghai for dates."
+    "Fetch details for nonempty todo or schedule ID lists. Use Asia/Shanghai for dates. "
+    "CLI message queries return recent bot sessions, not message bodies or full history. "
+    "A CLI response without errcode succeeds when isError is false; never invent an errcode."
 ))
 READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 Category = Literal["msg", "todo", "contact", "schedule"]
@@ -39,6 +41,8 @@ async def wecom_user_info() -> dict:
 async def wecom_list_tools(category: Category) -> CallToolResult:
     """查看企业微信查询接口及参数。msg=消息会话，todo=待办，contact=用户，schedule=日程。"""
     result = await query({"action": "list", "category": category})
+    if "content" in result:
+        return CallToolResult.model_validate(result)
     failed = bool(result.get("error")) or result.get("errcode", 0) not in (0, None)
     return CallToolResult(
         content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],

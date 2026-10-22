@@ -35,6 +35,15 @@ class WeComMCPBridge:
         self.senders: set[str] = set()
         self.capabilities: dict[str, str] = {}
         self._tokens: dict[str, str] = {}
+        self.cli = None
+        extra = getattr(getattr(adapter, "config", None), "extra", {}) or {}
+        if extra.get("cli_path"):
+            from .cli_queries import WeComCLIQueries
+            self.cli = WeComCLIQueries(
+                str(extra["cli_path"]),
+                Path(extra.get("cli_config_dir") or Path(self.profile) / "wecom-cli-config"),
+                adapter._bot_id,
+            )
 
     def observe_sender(self, userid: str) -> None:
         if userid:
@@ -100,6 +109,8 @@ class WeComMCPBridge:
             raise ValueError("unsupported category or action")
         method = data.get("method")
         arguments = data.get("arguments", {})
+        if self.cli and category in {"msg", "schedule"}:
+            return await self.cli.query(userid, action, category, method, arguments)
         if action == "call" and (method not in READ_TOOLS[category] or not isinstance(arguments, dict)):
             raise ValueError("only known read operations are enabled")
         response = await self.adapter._send_request(

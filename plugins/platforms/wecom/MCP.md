@@ -20,6 +20,49 @@ Only WeCom gateway turns receive the `wecom` MCP server. It exposes:
 - `wecom_list_tools`: discover query schemas for msg, todo, contact, schedule.
 - `wecom_query`: invoke the allowlisted read methods against official MCP.
 
+### Official CLI for messages and calendar
+
+The legacy WebSocket MCP configuration API can return `846610` for `msg` and
+`schedule` even when the corresponding CLI services are authorized. Install
+Tencent's official `@wecom/cli` (validated with 1.3.4), initialize it with the
+same bot's existing credentials, and verify `auth show --status` reports
+`authorized`. Keep its encrypted state inside this Hermes profile:
+
+```sh
+npm install --prefix /absolute/profile/wecom-cli @wecom/cli@1.3.4
+WECOM_CLI_CONFIG_DIR=/absolute/profile/wecom-cli-config wecom-cli auth init --manual
+```
+
+Use the installed CLI's full path for initialization if it is not on PATH. Add
+these settings under `platforms.wecom.extra`, alongside `mcp_queries: true`:
+
+```yaml
+cli_path: /absolute/path/to/wecom-cli
+cli_config_dir: /absolute/profile/wecom-cli-config
+```
+
+`cli_config_dir` defaults to `<active Hermes profile>/wecom-cli-config`. For
+launchd/services without Node on PATH, use the native executable installed under
+`node_modules/@wecom/cli-<platform>-<arch>/bin/wecom-cli`. Restart the gateway.
+When configured, only the `msg` and `schedule` categories use the CLI, through
+the same sender-bound MCP facade; other categories retain the existing path.
+
+The exposed CLI methods are `message.aibot.sessions.list`,
+`calendar.schedules.list`, and `calendar.schedules.get`. No arbitrary command
+or write method is accepted. Each query verifies `identity whoami` matches both
+the gateway bot and the authenticated sender. Unrecognized identity output or
+a different sender fails closed. This CLI route is limited to the authorizing
+user, including in group chats. Its child environment excludes inherited CLI
+tokens, endpoints, custom headers, and proxies; bot secrets are never in query
+arguments. No automatic login or permission expansion happens at query time.
+
+Message queries return up to 20 recent robot sessions, not historical message
+bodies. Date filtering and display limits must be applied to those returned
+sessions, not interpreted as a full history search. CLI calendar queries cover
+the current +/-30-day window; timestamps are interpreted as Asia/Shanghai.
+Successful CLI responses may omit `errcode`; use `isError` rather than inventing
+one. External failures retain their error code and `isError=true`.
+
 The gateway obtains MCP addresses through `aibot_get_mcp_config` on its existing
 WebSocket. Each remote MCP operation has a new session and passes the verified
 sender in `x-openclaw-wecom-userid`. A loopback bridge capability binds that sender
@@ -36,14 +79,20 @@ Configuration failures carry `isError=true` and the original `errcode`; they
 must not be interpreted as a successful empty query or automatically described
 as missing authorization.
 
-Live acceptance on 2026-10-22: authenticated sender identity succeeded;
+Initial legacy-MCP acceptance on 2026-10-22: authenticated sender identity succeeded;
 `get_todo_list(limit=5)` returned `errcode=0` and an empty first page. The server
 describes this todo API as limited to records created by this bot. Configuration
 requests for `msg`, `schedule`, and `contact` returned `846610`. Those remote
-queries are not verified working, even when the app's authorization page shows
+queries did not work through that legacy path, even when the app's authorization page showed
 the corresponding category as authorized. Do not substitute another data source.
 
-A prompt supported by that live result:
+Official CLI acceptance on 2026-10-22: `message.aibot.sessions.list` succeeded
+with one session; `calendar.schedules.list` succeeded with zero schedules for
+2026-10-22 through 2026-10-29 (Asia/Shanghai). Empty schedules are a valid query
+result, not evidence that the user's other dates are empty. `contact` remains
+on the legacy path and has not been fixed by this change.
+
+A prompt for the existing user/todo queries:
 
 > 使用 wecom_user_info 返回我的 userid，并注明来自已认证消息上下文。
 > 然后用 wecom_list_tools(todo) 获取参数，调用 get_todo_list 查询最多 5 条
